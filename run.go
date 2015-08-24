@@ -8,6 +8,7 @@ import (
 	"sync"
 )
 
+// General configuration options for a empa library user
 type Config struct {
 	// Number of processes to run locally
 	NSubprocs int
@@ -29,6 +30,9 @@ type Config struct {
 	OutEOL EOL
 }
 
+// Runner represents a runnable task on a single instance.  A Runner can
+// launch and manage several workers to process one partition of the
+// input data.
 type Runner struct {
 	conf Config
 	fin  chan string
@@ -39,6 +43,7 @@ type Runner struct {
 	wg   *sync.WaitGroup
 }
 
+// NewRunner creates a Runner applying a Config.
 func NewRunner(c Config) *Runner {
 	return &Runner{
 		fin:  make(chan string, c.InCount),
@@ -51,11 +56,14 @@ func NewRunner(c Config) *Runner {
 	}
 }
 
+// Start starts a Cmd subprocess.  Requires its number relative to
+// the total subprocesses that are going to be run.
 func (r *Runner) Start(i int, c *Cmd) error {
 	r.initCmd(c)
 	return c.run(uint(i % r.conf.NCPUs))
 }
 
+// Wait waits until all subprocesses have exited.
 func (r *Runner) Wait() {
 	// We will get the done signal twice (stdout, stderr) per process
 	for i := 0; i < r.conf.NSubprocs*2; i++ {
@@ -67,6 +75,7 @@ func (r *Runner) Wait() {
 	r.wg.Wait()
 }
 
+// Run starts the Runner management goroutines.
 func (r *Runner) Run(werr, w io.Writer) {
 	go r.logerr()
 	r.wg.Add(2)
@@ -74,20 +83,25 @@ func (r *Runner) Run(werr, w io.Writer) {
 	go r.consume(w, r.fout)
 }
 
+// WriteErr can be called to print an error message.
 func (r *Runner) WriteErr(err error) {
 	r.err <- err
 }
 
+// WriteString queues string s to be processed by one subprocess.  s is
+// only going to be processed if it belongs to the current data partition.
 func (r *Runner) WriteString(s string) {
 	if r.canProc(s) {
 		r.fin <- s
 	}
 }
 
+// Close signals that the data to be processed is over.
 func (r *Runner) Close() {
 	close(r.fin)
 }
 
+// initCmd configures a Cmd before it is run.
 func (r *Runner) initCmd(c *Cmd) {
 	c.fin = r.fin
 	c.fout = r.fout
@@ -98,6 +112,8 @@ func (r *Runner) initCmd(c *Cmd) {
 	c.outEOL = r.conf.OutEOL
 }
 
+// consume writes into w the strings received from in.  Strings written
+// are separated by the OutEOL as configured in Config.
 func (r *Runner) consume(w io.Writer, in <-chan string) {
 	defer r.wg.Done()
 	bw := bufio.NewWriter(w)
@@ -114,6 +130,7 @@ func (r *Runner) consume(w io.Writer, in <-chan string) {
 	}
 }
 
+// logerr prints all errors received from goroutines to stderr.
 func (r *Runner) logerr() {
 	for err := range r.err {
 		if err != nil {
@@ -122,6 +139,7 @@ func (r *Runner) logerr() {
 	}
 }
 
+// canProc determines if a string s belongs to the current data partition.
 func (r *Runner) canProc(s string) bool {
 	if r.conf.NProcs < 2 {
 		return true
@@ -129,6 +147,7 @@ func (r *Runner) canProc(s string) bool {
 	return sumstring(s)%r.conf.NProcs == r.conf.ProcID
 }
 
+// sumstrings sums all bytes of a string.
 func sumstring(s string) int {
 	var t int
 	for _, r := range s {
@@ -137,9 +156,10 @@ func sumstring(s string) int {
 	return t
 }
 
+// EOL represents the byte that ends a line.
 type EOL byte
 
-// dropCR drops a terminal \r from the data.
+// dropCR drops a terminal \r from the data if data is separated by \n
 func (e EOL) dropCR(data []byte) []byte {
 	if byte(e) == '\n' && len(data) > 0 && data[len(data)-1] == '\r' {
 		return data[0 : len(data)-1]
@@ -147,6 +167,7 @@ func (e EOL) dropCR(data []byte) []byte {
 	return data
 }
 
+// ScanLines implements the bufio.SplitFunc needed by a bufio.Scanner for an EOL object.
 func (e EOL) ScanLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
 		return 0, nil, nil

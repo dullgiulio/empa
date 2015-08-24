@@ -8,6 +8,7 @@ import (
 	"unsafe"
 )
 
+// ErrInvalidPID is returned when pinning to an unavailable CPU.
 var ErrInvalidPID = errors.New("Invalid PID")
 
 // pinToCPU sets the affinity of pid to be locked to cpu.
