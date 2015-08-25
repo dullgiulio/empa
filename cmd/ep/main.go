@@ -39,9 +39,9 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) < 1 {
-		// TODO: Call usage
-		log.Fatal("Usage: ep COMMAND [ARGS...]")
-	}
+	    flag.Usage()
+        os.Exit(1)
+    }
 	if zero {
 		conf.InEOL = empa.EOL('\x00')
 	}
